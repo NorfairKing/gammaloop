@@ -18,6 +18,7 @@ pub mod generation;
 pub mod hsurface;
 pub mod surface;
 pub mod tree;
+pub mod thermal_numerator;
 
 pub struct CFFTerm {
     // One per orientation
