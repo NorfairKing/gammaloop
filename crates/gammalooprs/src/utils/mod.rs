@@ -3966,7 +3966,11 @@ pub(crate) fn external_energy_atom_from_index(index: EdgeIndex) -> Atom {
 }
 
 pub(crate) fn thermal_distribution_atom_from_ose_atom(ose_atom: Atom, negative: bool) -> Atom {
-    function!(GS.thermal_distribution, if negative { -1 } else { 1 }, ose_atom)
+    function!(
+        GS.thermal_distribution,
+        if negative { -1 } else { 1 },
+        ose_atom
+    )
 }
 
 pub mod newton_solver;

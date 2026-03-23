@@ -18,7 +18,7 @@ use crate::{
         serde_utils::{IsDefault, is_false, is_float, is_true, is_usize, show_defaults_helper},
         symbolica_ext::StringSerializedAtom,
     },
-    uv::UVgenerationSettings,
+    uv::{UVExecutionSettings, UVgenerationSettings},
 };
 
 #[cfg_attr(
@@ -50,6 +50,15 @@ pub struct GenerationSettings {
     pub force_cuts: Vec<Vec<String>>,
     #[serde(skip_serializing_if = "IsDefault::is_default")]
     pub medium: MediumSettings,
+}
+
+impl GenerationSettings {
+    pub fn uv_execution_settings(&self) -> UVExecutionSettings<'_> {
+        UVExecutionSettings {
+            uv: &self.uv,
+            medium: &self.medium,
+        }
+    }
 }
 
 #[cfg_attr(
@@ -351,7 +360,9 @@ pub struct MediumSettings {
     pub mode: MediumMode,
 }
 
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Encode, Decode, JsonSchema)]
+#[derive(
+    Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Encode, Decode, JsonSchema,
+)]
 #[cfg_attr(feature = "python_api", pyo3::pyclass)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum MediumMode {

@@ -39,11 +39,13 @@ use crate::{
     model::ArcParticle,
     momentum::{sample::ExternalIndex, signature::SignatureLike},
     processes::{DotExportSettings, StandaloneExportSettings},
-    settings::{GlobalSettings, RuntimeSettings, runtime::LockedRuntimeSettings},
+    settings::{
+        GlobalSettings, RuntimeSettings, global::MediumMode, runtime::LockedRuntimeSettings,
+    },
     subtraction::amplitude_counterterm::AmplitudeCountertermAtom,
     utils::{F, GS, Length, W_},
     uv::{
-        UVgenerationSettings, UltravioletGraph,
+        UVExecutionSettings, UltravioletGraph,
         approx::{CutStructure, integrated::to_vakint_integrand},
         settings::VakintSettings,
         wood::CutWoods,
@@ -440,8 +442,8 @@ impl AmplitudeGraph {
 }
 
 impl AmplitudeGraph {
-    pub fn renormalization_part(&mut self, settings: &UVgenerationSettings) -> Result<Atom> {
-        let mut vk_settings = settings.vakint.true_settings();
+    pub fn renormalization_part(&mut self, settings: &UVExecutionSettings<'_>) -> Result<Atom> {
+        let mut vk_settings = settings.uv.vakint.true_settings();
         let wood = self.graph.wood(&self.graph.no_dummy());
         //  it needs to be the max number of loops across all divergent spinneys of that graph
         vk_settings.number_of_terms_in_epsilon_expansion = wood.max_loops as i64;
@@ -473,12 +475,12 @@ impl AmplitudeGraph {
     }
 
     #[instrument(skip_all, fields(indicatif.pb_show = true,indicatif.pb_msg = "Generating CFF"), err)]
-    pub(crate) fn generate_cff(&mut self) -> Result<()> {
+    pub(crate) fn generate_cff(&mut self, medium_mode: MediumMode) -> Result<()> {
         let shift_rewrite = self
             .graph
             .get_esurface_canonization(&self.graph.loop_momentum_basis);
 
-        let cff_expression = self.graph.generate_cff(&[], &shift_rewrite)?;
+        let cff_expression = self.graph.generate_cff(&[], &shift_rewrite, medium_mode)?;
         self.derived_data.cff_expression = Some(cff_expression);
 
         Ok(())
@@ -492,7 +494,8 @@ impl AmplitudeGraph {
     ) -> Result<()> {
         let vk = crate::utils::vakint()?;
 
-        self.generate_cff()?;
+        let medium_mode = settings.medium.mode;
+        self.generate_cff(medium_mode)?;
 
         self.build_integrands(settings, vk)?;
 
@@ -785,7 +788,8 @@ impl AmplitudeGraph {
         };
         let woods = CutWoods::new(cutstructure, &self.graph, &settings.uv.vakint);
         let mut forests = woods.unfold(&self.graph);
-        forests.compute(&mut self.graph, vakint, &settings.uv)?;
+        let uv_settings = settings.uv_execution_settings();
+        forests.compute(&mut self.graph, vakint, &uv_settings)?;
         let exprs: Vec<_> = forests
             .orientation_parametric_exprs(&self.graph, false)?
             .into_iter()
@@ -874,7 +878,8 @@ impl AmplitudeGraph {
 
         let woods = CutWoods::new(cut_structure, &self.graph, &settings.uv.vakint);
         let mut forests = woods.unfold(&self.graph);
-        forests.compute(&mut self.graph, vakint, &settings.uv)?;
+        let uv_settings = settings.uv_execution_settings();
+        forests.compute(&mut self.graph, vakint, &uv_settings)?;
 
         let exprs: Vec<_> = forests.orientation_parametric_exprs(&self.graph, false)?;
 
@@ -1174,7 +1179,7 @@ pub mod test {
 
     use crate::{
         dot, graph::parse::IntoGraph, initialisation::test_initialise, processes::AmplitudeGraph,
-        utils::load_generic_model,
+        settings::global::MediumMode, utils::load_generic_model,
     };
     #[test]
     fn amplitude_tree() {
@@ -1194,7 +1199,7 @@ pub mod test {
 
         let _model = load_generic_model("sm");
 
-        graph.generate_cff().unwrap();
+        graph.generate_cff(MediumMode::Vacuum).unwrap();
         // graph.build_parametric_integrand(&GenerationSettings::default());
 
         let param_builder = &graph.graph.param_builder;

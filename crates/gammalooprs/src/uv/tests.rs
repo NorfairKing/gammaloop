@@ -12,7 +12,7 @@ use crate::initialisation::test_initialise;
 use crate::momentum::sample::LoopIndex;
 use crate::processes::{Amplitude, AmplitudeGraph};
 use crate::settings::GlobalSettings;
-use crate::settings::global::OrientationPattern;
+use crate::settings::global::{MediumMode, OrientationPattern};
 use crate::utils::W_;
 use crate::utils::symbolica_ext::TypstFormat;
 use crate::uv::profile::{ProfileSettings, UVProfileable};
@@ -71,7 +71,7 @@ fn four_photon_one_loop_amp() {
     };
     let vk = crate::utils::vakint().unwrap();
 
-    amp.generate_cff().unwrap();
+    amp.generate_cff(MediumMode::Vacuum).unwrap();
     amp.build_integrands(&set, vk).unwrap();
 
     println!("{}", amp.derived_data.all_mighty_integrand);

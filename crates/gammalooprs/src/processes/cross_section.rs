@@ -155,6 +155,7 @@ impl CsAmplitudeCTDiagram {
                 graph,
                 &self.left_subgraph,
                 &self.reversed_dangling_edges,
+                settings.medium.mode,
             )
             .into_iter()
             .map(|cff_graph| cff_graph.global_orientation)
@@ -165,6 +166,7 @@ impl CsAmplitudeCTDiagram {
                 graph,
                 &self.right_subgraph,
                 &self.reversed_dangling_edges,
+                settings.medium.mode,
             )
             .into_iter()
             .map(|cff_graph| cff_graph.global_orientation)
@@ -756,7 +758,7 @@ impl CrossSectionGraph {
         self.graph.dot_serialize_fmt(writer, settings)
     }
 
-    fn generate_cff(&mut self, _settings: &GenerationSettings) -> Result<()> {
+    fn generate_cff(&mut self, settings: &GenerationSettings) -> Result<()> {
         let canonize_esurface = self
             .graph
             .get_esurface_canonization(&self.graph.loop_momentum_basis);
@@ -772,9 +774,9 @@ impl CrossSectionGraph {
             .map(|x| x.1)
             .collect_vec();
 
-        let global_cff = self
-            .graph
-            .generate_cff(&contract_edges, &canonize_esurface)?;
+        let global_cff =
+            self.graph
+                .generate_cff(&contract_edges, &canonize_esurface, settings.medium.mode)?;
 
         let cut_esurface_map = self
             .cut_esurface
@@ -1014,7 +1016,8 @@ impl CrossSectionGraph {
         let lu_prefactor = self.lu_prefactor_helper_new();
 
         let mut cut_forests = cut_woods.unfold(&self.graph);
-        cut_forests.compute(&mut self.graph, vakint, &settings.uv)?;
+        let uv_settings = settings.uv_execution_settings();
+        cut_forests.compute(&mut self.graph, vakint, &uv_settings)?;
         Ok(cut_forests
             .orientation_parametric_exprs(&self.graph, settings.uv.add_sigma)?
             .into_iter()

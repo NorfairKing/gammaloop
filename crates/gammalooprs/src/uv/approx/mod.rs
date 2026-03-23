@@ -7,7 +7,7 @@ use crate::{
         symbolica_ext::{LOGPRINTOPTS, LogPrint},
     },
     uv::{
-        UVgenerationSettings,
+        UVExecutionSettings,
         approx::{integrated::Integrated, local_3d::Local3DApproximation},
     },
 };
@@ -56,7 +56,7 @@ pub trait ApproximationKernel<C> {
 
 pub struct UVCtx<'a> {
     pub graph: &'a Graph,
-    pub settings: &'a UVgenerationSettings,
+    pub settings: &'a UVExecutionSettings<'a>,
 }
 
 pub trait ApproxKernel {
@@ -197,7 +197,7 @@ impl CFFapprox {
         graph: &mut Graph,
         to_contract: &SuBitGraph,
         cuts: &CutSet,
-        _settings: &UVgenerationSettings,
+        settings: &UVExecutionSettings<'_>,
     ) -> Result<CFFapprox> {
         let cff = graph
             .cff(
@@ -205,6 +205,7 @@ impl CFFapprox {
                     .union(&graph.tree_edges)
                     .subtract(&graph.initial_state_cut),
                 cuts,
+                settings.medium.mode,
             )?
             .expression_with_selectors();
 
@@ -225,7 +226,7 @@ impl CFFapprox {
     pub(crate) fn root(
         graph: &mut Graph,
         cuts: &CutSet,
-        settings: &UVgenerationSettings,
+        settings: &UVExecutionSettings<'_>,
     ) -> Result<CFFapprox> {
         Self::dependent(graph, &graph.empty_subgraph::<SuBitGraph>(), cuts, settings)
     }
@@ -235,10 +236,10 @@ impl Approximation {
         &mut self,
         graph: &mut Graph,
         cuts: &CutSet,
-        settings: &UVgenerationSettings,
+        settings: &UVExecutionSettings<'_>,
     ) -> Result<()> {
         self.simple_approx = Some(SimpleApprox::root(graph.as_ref().empty_subgraph()));
-        if settings.only_integrated {
+        if settings.uv.only_integrated {
             self.integrated_4d = ApproxOp::Root;
         } else {
             self.integrated_4d = ApproxOp::Root;
@@ -277,15 +278,17 @@ impl Approximation {
         graph: &Graph,
         vakint: (&Vakint, &vakint::VakintSettings),
         dependent: &Self,
-        settings: &UVgenerationSettings,
+        settings: &UVExecutionSettings<'_>,
     ) -> Result<()> {
         let ctx = UVCtx { graph, settings };
+
+        let uv_settings = settings.uv;
 
         let Some((current, sign)) = &dependent.integrated_4d.expr() else {
             return Err(eyre!("integrated_4d not computed"));
         };
 
-        debug!(pole_part = %settings.pole_part,
+        debug!(pole_part = %uv_settings.pole_part,
             simple = % self.simple_approx
                 .as_ref()
                 .unwrap()
@@ -314,7 +317,7 @@ impl Approximation {
         graph: &mut Graph,
         cuts: &CutSet,
         dependent: &Self,
-        settings: &UVgenerationSettings,
+        settings: &UVExecutionSettings<'_>,
     ) -> Result<()> {
         let Some((cff, sign)) = dependent.local_3d.expr() else {
             panic!("Should have computed the dependent cff");
@@ -378,7 +381,7 @@ impl Approximation {
         &self,
         graph: &mut Graph,
         cutset: &CutSet,
-        settings: &UVgenerationSettings,
+        settings: &UVExecutionSettings<'_>,
     ) -> Result<Vec<Atom>> {
         let global_num = graph.global_atom();
         let (t, s) = self

@@ -19,7 +19,7 @@ use tracing::{debug, instrument};
 use vakint::Vakint;
 
 use super::{
-    UVgenerationSettings,
+    UVExecutionSettings,
     approx::Approximation,
     poset::{DAG, DagNode},
 };
@@ -51,7 +51,7 @@ impl CutForests {
         &mut self,
         graph: &mut Graph,
         vakint: &Vakint,
-        settings: &UVgenerationSettings,
+        settings: &UVExecutionSettings<'_>,
     ) -> Result<()> {
         for ((forest, cuts), vakint_settings) in &mut self
             .forests
@@ -94,9 +94,10 @@ impl Forest {
         graph: &mut Graph,
         vakint: (&Vakint, &vakint::VakintSettings),
         cut_data: &CutSet,
-        settings: &UVgenerationSettings,
+        settings: &UVExecutionSettings<'_>,
     ) -> Result<()> {
         let order = self.dag.compute_topological_order();
+        let uv_settings = settings.uv;
 
         for (i, n) in order.into_iter().enumerate() {
             match self.dag.nodes[n].parents.len() {
@@ -118,12 +119,12 @@ impl Forest {
                     current.data.simple_approx = Some(a.dependent(current.data.subgraph.clone()));
 
                     current.data.topo_order = i;
-                    if settings.generate_integrated {
+                    if uv_settings.generate_integrated {
                         current
                             .data
                             .compute_integrated(graph, vakint, &parent.data, settings)?;
                     }
-                    if settings.only_integrated {
+                    if uv_settings.only_integrated {
                         continue;
                     }
                     assert!(matches!(parent.data.local_3d, CFFapprox::Dependent { .. }));

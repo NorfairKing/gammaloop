@@ -328,7 +328,7 @@ impl CrossSectionGraphTerm {
             .filter(|orientation| {
                 orientation.expression.iter_nodes().any(|tree_node| {
                     graph.cut_esurface_id_map.iter().any(|cut_esurface_id| {
-                        tree_node.data == HybridSurfaceID::Esurface(*cut_esurface_id)
+                        tree_node.data.surface_id == HybridSurfaceID::Esurface(*cut_esurface_id)
                     })
                 })
             })

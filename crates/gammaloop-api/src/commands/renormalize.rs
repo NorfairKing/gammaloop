@@ -8,6 +8,7 @@ use clap::Args;
 use color_eyre::Result;
 use colored::Colorize;
 use gammalooprs::utils::symbolica_ext::TypstFormat;
+use gammalooprs::uv::UVExecutionSettings;
 use idenso::color::{ColorSimplifier, CS};
 use idenso::metric::MetricSimplifier;
 use schemars::JsonSchema;
@@ -66,6 +67,10 @@ impl Renormalize {
 
         settings.only_integrated = true;
         settings.generate_integrated = true;
+        let uv_settings = UVExecutionSettings {
+            uv: &settings,
+            medium: &global_cli_settings.global.generation.medium,
+        };
 
         let mut renormalization_part: Vec<Atom> = Vec::new();
         let output_dir = if let Some(path) = self.result_path.clone() {
@@ -90,7 +95,7 @@ impl Renormalize {
         };
 
         for (index, graph_term) in amplitude.graphs.iter_mut().enumerate() {
-            let mut part = graph_term.renormalization_part(&settings)?;
+            let mut part = graph_term.renormalization_part(&uv_settings)?;
 
             part = state
                 .model

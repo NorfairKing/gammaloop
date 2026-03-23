@@ -228,6 +228,14 @@ impl<T> Tree<T> {
     where
         T: Eq,
     {
+        self.keep_branches_with_predicate_count_mut(|data| data == value, n);
+    }
+
+    pub(crate) fn keep_branches_with_predicate_count_mut(
+        &mut self,
+        predicate: impl Fn(&T) -> bool,
+        n: usize,
+    ) {
         if self.nodes.is_empty() {
             return;
         }
@@ -240,7 +248,7 @@ impl<T> Tree<T> {
             let path = self.path_to_root(leaf);
             let count = path
                 .iter()
-                .filter(|&&node_id| self.nodes[node_id].data == *value)
+                .filter(|&&node_id| predicate(&self.nodes[node_id].data))
                 .count();
 
             if count == n {
@@ -275,6 +283,10 @@ impl<T> Tree<T> {
     where
         T: Eq,
     {
+        self.max_predicate_count_on_branch(|data| data == value)
+    }
+
+    pub(crate) fn max_predicate_count_on_branch(&self, predicate: impl Fn(&T) -> bool) -> usize {
         if self.nodes.is_empty() {
             return 0;
         }
@@ -284,7 +296,7 @@ impl<T> Tree<T> {
             .map(|leaf| {
                 self.path_to_root(leaf)
                     .into_iter()
-                    .filter(|&node_id| self.nodes[node_id].data == *value)
+                    .filter(|&node_id| predicate(&self.nodes[node_id].data))
                     .count()
             })
             .max()

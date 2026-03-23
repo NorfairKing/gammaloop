@@ -1,11 +1,11 @@
+use crate::utils::{ose_atom_from_index, thermal_distribution_atom_from_ose_atom};
 use bincode_trait_derive::{Decode, Encode};
 use derive_more::{From, Into};
-use serde::{Deserialize, Serialize};
 use linnet::half_edge::involution::EdgeIndex;
+use serde::{Deserialize, Serialize};
 use symbolica::atom::Atom;
 use symbolica::parse;
 use typed_index_collections::TiVec;
-use crate::utils::{ose_atom_from_index, thermal_distribution_atom_from_ose_atom};
 
 #[derive(From, Into, Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Encode, Decode)]
 pub struct ThermalNumeratorID(usize);
@@ -20,9 +20,7 @@ pub struct ThermalNumerator {
 
 impl ThermalNumerator {
     pub(crate) fn to_atom(&self, cut_edges: &[EdgeIndex]) -> Atom {
-        let energy_atom = |index: EdgeIndex| {
-            ose_atom_from_index(index)
-        };
+        let energy_atom = |index: EdgeIndex| ose_atom_from_index(index);
 
         let product = |positive_sign_is_negative: bool, negative_sign_is_negative: bool| {
             let positive_part = self

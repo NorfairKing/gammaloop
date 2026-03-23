@@ -55,7 +55,7 @@ impl ApproximationKernel<UVCtx<'_>> for Local3DApproximation {
         cff: &Atom,
     ) -> Result<Atom> {
         let graph = ctx.graph;
-        let settings = ctx.settings;
+        let settings = ctx.settings.uv;
         let reduced = current.reduced_subgraph(given);
         let mut cff = cff.clone();
 

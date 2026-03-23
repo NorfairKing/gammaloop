@@ -20,7 +20,7 @@ use vakint::Vakint;
 use crate::{
     graph::{Graph, LMBext, LoopMomentumBasis, cuts::CutSet},
     uv::{
-        UVgenerationSettings, UltravioletGraph,
+        UVExecutionSettings, UltravioletGraph,
         approx::{
             ApproximationKernel, CutStructure, ForestNodeLike, UVCtx, integrated::Integrated,
             local_3d::Local3DApproximation,
@@ -589,7 +589,7 @@ impl Forests {
         graph: &mut Graph,
         wood: &Wood,
         vakint: (&Vakint, &vakint::VakintSettings),
-        settings: &UVgenerationSettings,
+        settings: &UVExecutionSettings<'_>,
     ) -> Result<()> {
         let integrated_orchestrator = Integrated::new(vakint.0, vakint.1);
         let uvctx = UVCtx {
@@ -625,7 +625,7 @@ impl Forests {
         &mut self,
         graph: &mut Graph,
         wood: &Wood,
-        settings: &UVgenerationSettings,
+        settings: &UVExecutionSettings<'_>,
     ) -> Result<()> {
         let local_orchestrator = Local3DApproximation {};
         for (cut_compatible_forest_subset, c) in &self.cuts {

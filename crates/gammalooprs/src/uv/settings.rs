@@ -1,9 +1,12 @@
-use crate::utils::{
-    GS,
-    serde_utils::{
-        IsDefault, is_default_form_path, is_default_pysecdec_relative_precision,
-        is_default_python_path, is_default_vakint_evaluation_methods,
-        is_default_vakint_normalization, is_false, is_one_string, is_true, is_usize,
+use crate::{
+    settings::global::MediumSettings,
+    utils::{
+        GS,
+        serde_utils::{
+            IsDefault, is_default_form_path, is_default_pysecdec_relative_precision,
+            is_default_python_path, is_default_vakint_evaluation_methods,
+            is_default_vakint_normalization, is_false, is_one_string, is_true, is_usize,
+        },
     },
 };
 use bincode_trait_derive::{Decode, Encode};
@@ -244,4 +247,10 @@ impl Default for UVgenerationSettings {
             vakint: VakintSettings::default(),
         }
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct UVExecutionSettings<'a> {
+    pub uv: &'a UVgenerationSettings,
+    pub medium: &'a MediumSettings,
 }

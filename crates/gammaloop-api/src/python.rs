@@ -10,7 +10,10 @@ use gammalooprs::{
         HistogramStatisticsSnapshot,
     },
     processes::{DotExportSettings, ProcessCollection},
-    settings::{global::OrientationPattern, RuntimeSettings},
+    settings::{
+        global::{MediumMode, OrientationPattern},
+        RuntimeSettings,
+    },
     utils::tracing::{LogFormat, LogLevel},
 };
 use linnet::half_edge::{
@@ -81,6 +84,7 @@ fn python_module(_py: Python, m: &Bound<PyModule>) -> PyResult<()> {
     gammalooprs::set_interrupt_handler();
     m.add_class::<GammaLoopAPI>()?;
     m.add_class::<LogLevel>()?;
+    m.add_class::<MediumMode>()?;
     m.add_class::<DotExportSettings>()?;
     m.add_class::<PyEvaluationResult>()?;
     m.add_class::<PyBatchEvaluationResult>()?;
@@ -1994,13 +1998,14 @@ impl GammaLoopAPI {
             .map(|_| ())
     }
 
-    #[pyo3(name = "generate_cff", signature = (dot_string, subgraph_nodes, reverse_dangling,orientation_pattern=None))]
+    #[pyo3(name = "generate_cff", signature = (dot_string, subgraph_nodes, reverse_dangling,orientation_pattern=None, medium_mode=MediumMode::Vacuum))]
     pub(crate) fn generate_cff(
         &self,
         dot_string: String,
         subgraph_nodes: Vec<String>,
         reverse_dangling: Vec<usize>,
         orientation_pattern: Option<String>,
+        medium_mode: MediumMode,
     ) -> PyResult<Vec<(HashMap<usize, i32>, String)>> {
         let graph = Graph::from_string(dot_string, &self.gammaloop_state.model)
             .unwrap()
@@ -2027,6 +2032,7 @@ impl GammaLoopAPI {
         let mut surface_cache = SurfaceCache {
             esurface_cache: TiVec::new(),
             hsurface_cache: TiVec::new(),
+            thermal_numerator_cache: TiVec::new(),
         };
 
         let cff = generate_cff_expression_from_subgraph(
@@ -2036,6 +2042,7 @@ impl GammaLoopAPI {
             &reverse_dangling,
             &graph.get_edges_in_initial_state_cut(),
             &mut surface_cache,
+            medium_mode,
         )
         .map_err(|e| {
             exceptions::PyException::new_err(format!("Could not generate CFF expression: {}", e))
@@ -2075,7 +2082,7 @@ impl GammaLoopAPI {
 
     #[pyo3(
         name = "generate_cff_as_json_string",
-        signature = (dot_string, subgraph_nodes, reverse_dangling, orientation_pattern = None)
+        signature = (dot_string, subgraph_nodes, reverse_dangling, orientation_pattern = None, medium_mode = MediumMode::Vacuum)
     )]
     pub(crate) fn generate_cff_as_json_string(
         &self,
@@ -2083,6 +2090,7 @@ impl GammaLoopAPI {
         subgraph_nodes: Vec<String>,
         reverse_dangling: Vec<usize>,
         orientation_pattern: Option<String>,
+        medium_mode: MediumMode,
     ) -> PyResult<String> {
         let _ = orientation_pattern;
         let graph = Graph::from_string(dot_string, &self.gammaloop_state.model)
@@ -2110,6 +2118,7 @@ impl GammaLoopAPI {
         let mut surface_cache = SurfaceCache {
             esurface_cache: TiVec::new(),
             hsurface_cache: TiVec::new(),
+            thermal_numerator_cache: TiVec::new(),
         };
 
         let cff = generate_cff_expression_from_subgraph(
@@ -2119,6 +2128,7 @@ impl GammaLoopAPI {
             &reverse_dangling,
             &graph.get_edges_in_initial_state_cut(),
             &mut surface_cache,
+            medium_mode,
         )
         .map_err(|e| {
             exceptions::PyException::new_err(format!("Could not generate CFF expression: {}", e))

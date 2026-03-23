@@ -67,7 +67,7 @@ impl ApproximationKernel<UVCtx<'_>> for Integrated<'_> {
     ) -> Result<Atom> {
         let reduced = current.reduced_subgraph(given);
         let graph = ctx.graph;
-        let settings = ctx.settings;
+        let settings = ctx.settings.uv;
         let mut t_arg = ctx
             .graph
             .numerator(&reduced, given.subgraph())

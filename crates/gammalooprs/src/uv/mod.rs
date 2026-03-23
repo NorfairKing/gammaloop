@@ -41,7 +41,7 @@ pub(crate) fn is_not_paired(pair: &HedgePair) -> bool {
 
 pub mod hedge_poset;
 pub mod settings;
-pub use settings::UVgenerationSettings;
+pub use settings::{UVExecutionSettings, UVgenerationSettings};
 pub mod uv_graph;
 pub use uv_graph::UltravioletGraph;
 

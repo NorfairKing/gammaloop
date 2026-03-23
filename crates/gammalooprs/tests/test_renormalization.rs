@@ -1,12 +1,15 @@
+use std::sync::LazyLock;
+
 use gammalooprs::{
     dot,
     graph::{Graph, parse::IntoGraph},
     initialisation::test_initialise,
     model::Model,
     processes::Amplitude,
+    settings::global::MediumSettings,
     utils::load_generic_model,
     uv::{
-        UVgenerationSettings,
+        UVExecutionSettings, UVgenerationSettings,
         settings::{AlphaLoopSettings, MATADSettings, VakintSettings},
     },
 };
@@ -16,6 +19,15 @@ use symbolica::{
     atom::{Atom, AtomCore, Symbol},
     parse, parse_lit,
 };
+
+static VACUUM_MEDIUM_SETTINGS: LazyLock<MediumSettings> = LazyLock::new(MediumSettings::default);
+
+fn vacuum_uv_execution_settings(settings: &UVgenerationSettings) -> UVExecutionSettings<'_> {
+    UVExecutionSettings {
+        uv: settings,
+        medium: &*VACUUM_MEDIUM_SETTINGS,
+    }
+}
 
 #[test]
 fn scalar_pole_part() {
@@ -33,17 +45,19 @@ fn scalar_pole_part() {
 
     let model = load_generic_model("scalars");
 
-    let a = amp.graphs[0]
-        .renormalization_part(&UVgenerationSettings {
-            softct: false,
-            only_integrated: true,
-            vakint: VakintSettings {
-                normalization: "MSbar".to_string(),
-                additional_normalization: "1".to_string(),
-                ..Default::default()
-            },
+    let settings = UVgenerationSettings {
+        softct: false,
+        only_integrated: true,
+        vakint: VakintSettings {
+            normalization: "MSbar".to_string(),
+            additional_normalization: "1".to_string(),
             ..Default::default()
-        })
+        },
+        ..Default::default()
+    };
+
+    let a = amp.graphs[0]
+        .renormalization_part(&vacuum_uv_execution_settings(&settings))
         .unwrap();
 
     println!("ren part: {:>}", a);
@@ -118,6 +132,7 @@ fn finite_part_ghost_3loop() {
         },
         ..Default::default()
     };
+    let settings = vacuum_uv_execution_settings(&settings);
 
     let a = amp.graphs[0].renormalization_part(&settings).unwrap();
     //p1.p1*gs^6*ca^3*rat( - 3/8*ep^-2 + 29/32*ep^-1)
@@ -841,6 +856,7 @@ fn finite_part_ghost_2loop() {
         },
         ..Default::default()
     };
+    let settings = vacuum_uv_execution_settings(&settings);
     let model = load_generic_model("sm");
 
     let a = amp.graphs[0].renormalization_part(&settings).unwrap();
@@ -906,13 +922,15 @@ fn finit_part_ghlo() {
 
     let model = load_generic_model("sm");
 
+    let settings = UVgenerationSettings {
+        softct: false,
+        only_integrated: true,
+        pole_part: true,
+        ..Default::default()
+    };
+
     let a = amp.graphs[0]
-        .renormalization_part(&UVgenerationSettings {
-            softct: false,
-            only_integrated: true,
-            pole_part: true,
-            ..Default::default()
-        })
+        .renormalization_part(&vacuum_uv_execution_settings(&settings))
         .unwrap();
 
     println!("ren part: {:>}", a);
