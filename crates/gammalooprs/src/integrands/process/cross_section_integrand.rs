@@ -386,8 +386,20 @@ impl CrossSectionGraphTerm {
             .iter()
             .map(|ct_data| {
                 (
-                    ct_data.left_thresholds.clone(),
-                    ct_data.right_thresholds.clone(),
+                    ct_data
+                        .left_thresholds
+                        .iter()
+                        .map(|esurface_id| {
+                            graph.graph.surface_cache.esurface_cache[*esurface_id].clone()
+                        })
+                        .collect(),
+                    ct_data
+                        .right_thresholds
+                        .iter()
+                        .map(|esurface_id| {
+                            graph.graph.surface_cache.esurface_cache[*esurface_id].clone()
+                        })
+                        .collect(),
                 )
             })
             .collect();

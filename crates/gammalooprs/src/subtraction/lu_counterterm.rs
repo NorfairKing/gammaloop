@@ -14,7 +14,7 @@ use typed_index_collections::TiVec;
 use crate::{
     GammaLoopContext,
     cff::{
-        esurface::{Esurface, EsurfaceCollection, EsurfaceID, ExistingEsurfaceId},
+        esurface::{self, Esurface, EsurfaceCollection, EsurfaceID, ExistingEsurfaceId},
         expression::{GraphOrientation, OrientationID},
     },
     graph::{Graph, LmbIndex, LoopMomentumBasis},
@@ -31,7 +31,8 @@ use crate::{
         sample::{LoopMomenta, MomentumSample, SubspaceData},
     },
     processes::{
-        CutId, IteratedCtCollection, LUCounterTermData, LeftThresholdId, RightThresholdId,
+        CutId, IteratedCtCollection, LUCounterTermData, LeftThresholdId, RaisedCutId,
+        RightThresholdId,
     },
     settings::{GlobalSettings, RuntimeSettings},
     subtraction::{
@@ -40,7 +41,7 @@ use crate::{
     },
     utils::{
         F, FloatLike,
-        hyperdual_utils::DualOrNot,
+        hyperdual_utils::{DualOrNot, shape_for_t_derivatives},
         newton_solver::{NewtonIterationResult, newton_iteration_and_derivative},
     },
 };
@@ -48,9 +49,9 @@ use crate::{
 #[derive(Clone, Encode, Decode)]
 #[trait_decode(trait = GammaLoopContext)]
 pub struct LUCounterTermEvaluators {
-    pub left_thresholds_evaluator: TiVec<LeftThresholdId, EvaluatorStack>,
-    pub right_thresholds_evaluator: TiVec<RightThresholdId, EvaluatorStack>,
-    pub iterated_evaluator: IteratedCtCollection<EvaluatorStack>,
+    pub left_thresholds_evaluator: TiVec<LeftThresholdId, Vec<EvaluatorStack>>,
+    pub right_thresholds_evaluator: TiVec<RightThresholdId, Vec<EvaluatorStack>>,
+    pub iterated_evaluator: IteratedCtCollection<Vec<EvaluatorStack>>,
 }
 
 impl LUCounterTermEvaluators {
@@ -63,42 +64,81 @@ impl LUCounterTermEvaluators {
         let left_thresholds_evaluator = counterterm_data
             .left_atoms
             .iter()
-            .map(|atom| {
-                EvaluatorStack::new(
-                    &[atom.clone()],
-                    param_builder,
-                    &orientations.raw,
-                    None,
-                    &settings.generation.evaluator,
-                )
-                .unwrap()
+            .map(|parametric_integrands| {
+                parametric_integrands
+                    .integrands
+                    .iter()
+                    .enumerate()
+                    .map(|(num_esurface, atom)| {
+                        let dual_shape = if num_esurface > 1 {
+                            Some(shape_for_t_derivatives(num_esurface - 1))
+                        } else {
+                            None
+                        };
+
+                        EvaluatorStack::new(
+                            &[atom.clone()],
+                            param_builder,
+                            &orientations.raw,
+                            dual_shape,
+                            &settings.generation.evaluator,
+                        )
+                        .unwrap()
+                    })
+                    .collect()
             })
             .collect();
 
         let right_thresholds_evaluator = counterterm_data
             .right_atoms
             .iter()
-            .map(|atom| {
-                EvaluatorStack::new(
-                    &[atom.clone()],
-                    param_builder,
-                    &orientations.raw,
-                    None,
-                    &settings.generation.evaluator,
-                )
-                .unwrap()
+            .map(|parametric_integrands| {
+                parametric_integrands
+                    .integrands
+                    .iter()
+                    .enumerate()
+                    .map(|(num_esurface, atom)| {
+                        let dual_shape = if num_esurface > 1 {
+                            Some(shape_for_t_derivatives(num_esurface - 1))
+                        } else {
+                            None
+                        };
+
+                        EvaluatorStack::new(
+                            &[atom.clone()],
+                            param_builder,
+                            &orientations.raw,
+                            dual_shape,
+                            &settings.generation.evaluator,
+                        )
+                        .unwrap()
+                    })
+                    .collect()
             })
             .collect();
 
-        let iterated_evaluator = counterterm_data.iterated.map_ref(|atom| {
-            EvaluatorStack::new(
-                &[atom.clone()],
-                param_builder,
-                &orientations.raw,
-                None,
-                &settings.generation.evaluator,
-            )
-            .unwrap()
+        let iterated_evaluator = counterterm_data.iterated.map_ref(|parametric_integrands| {
+            parametric_integrands
+                .integrands
+                .iter()
+                .enumerate()
+                .map(|(num_esurface, atom)| {
+                    let dual_shape = if num_esurface > 1 {
+                        Some(shape_for_t_derivatives(num_esurface - 1))
+                    } else {
+                        None
+                    };
+
+                    EvaluatorStack::new(
+                        &[atom.clone()],
+                        param_builder,
+                        &orientations.raw,
+                        dual_shape,
+                        &settings.generation.evaluator,
+                    )
+                    .unwrap()
+                })
+                .collect()
         });
 
         LUCounterTermEvaluators {
@@ -117,9 +157,9 @@ type CutThresholds = (
 #[derive(Clone, Encode, Decode)]
 #[trait_decode(trait = GammaLoopContext)]
 pub(crate) struct LUCounterTerm {
-    pub evaluators: TiVec<CutId, LUCounterTermEvaluators>,
-    pub thresholds: TiVec<CutId, CutThresholds>,
-    pub subspaces: TiVec<CutId, (SubspaceData, SubspaceData)>,
+    pub evaluators: TiVec<RaisedCutId, LUCounterTermEvaluators>,
+    pub thresholds: TiVec<RaisedCutId, CutThresholds>,
+    pub subspaces: TiVec<RaisedCutId, (SubspaceData, SubspaceData)>,
 }
 
 impl LUCounterTerm {
@@ -128,7 +168,7 @@ impl LUCounterTerm {
         &mut self,
         momentum_sample: &MomentumSample<T>,
         lu_cut_params: &LUParams<T>,
-        cut_id: CutId,
+        cut_id: RaisedCutId,
         reversed_edges: &[EdgeIndex],
         all_lmbs: &TiVec<LmbIndex, LoopMomentumBasis>,
         graph: &Graph,

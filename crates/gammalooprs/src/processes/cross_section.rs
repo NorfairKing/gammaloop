@@ -10,23 +10,22 @@ use ahash::HashMap;
 // use bincode::{Decode, Encode};
 use bincode_trait_derive::{Decode, Encode};
 use color_eyre::Result;
-use idenso::color::ColorSimplifier;
 use itertools::Itertools;
 use rayon::{
     ThreadPool,
     iter::{IntoParallelRefMutIterator, ParallelIterator},
 };
-use spenso::{algebra::algebraic_traits::IsZero, structure::concrete_index::ExpandedIndex};
+use spenso::algebra::algebraic_traits::IsZero;
 use tracing::info;
 use vakint::Vakint;
 
 use crate::{
     GammaLoopContext, GammaLoopContextContainer,
     cff::{
-        esurface::{self, RaisedEsurfaceData, RaisedEsurfaceGroup},
+        esurface::{RaisedEsurfaceData, RaisedEsurfaceGroup},
         expression::{CFFExpression, OrientationID},
     },
-    define_index, disable,
+    define_index,
     graph::{
         GraphGroup, GroupId, LMBext, LmbIndex, LoopMomentumBasis,
         cuts::{CutSet, ResidueSelector},
@@ -41,27 +40,23 @@ use crate::{
         Helicity,
         sample::{ExternalIndex, SubspaceData},
     },
-    numerator::symbolica_ext::AtomCoreExt,
     processes::{DotExportSettings, EvaluatorSettings},
     settings::{GlobalSettings, global::GenerationSettings, runtime::LockedRuntimeSettings},
-    utils::{GS, hyperdual_utils::shape_for_t_derivatives, symbolica_ext::LogPrint},
-    uv::{approx::CutStructure, forest::ParametricIntegrands, uv_graph::UVE, wood::CutWoods},
+    utils::{GS, hyperdual_utils::shape_for_t_derivatives},
+    uv::{approx::CutStructure, forest::ParametricIntegrands, wood::CutWoods},
 };
 use eyre::{Context, eyre};
 use linnet::half_edge::{
-    involution::{EdgeIndex, EdgeVec, Flow, HedgePair, Orientation},
+    involution::{EdgeVec, Orientation},
     subgraph::{
-        HedgeNode, Inclusion, InternalSubGraph, ModifySubSet, OrientedCut, SuBitGraph,
-        SubGraphLike, SubSetOps,
+        HedgeNode, Inclusion, InternalSubGraph, OrientedCut, SuBitGraph, SubGraphLike, SubSetOps,
     },
 };
 use serde::{Deserialize, Serialize};
 use symbolica::{
     atom::{Atom, AtomCore},
     evaluate::{FunctionMap, OptimizationSettings},
-    function,
-    id::Replacement,
-    parse, symbol,
+    function, parse, symbol,
 };
 use tracing::{debug, warn};
 use typed_index_collections::{TiVec, ti_vec};
@@ -114,14 +109,14 @@ impl<T> IndexMut<(LeftThresholdId, RightThresholdId)> for IteratedCtCollection<T
     }
 }
 
-#[derive(Clone, Debug, Encode, Decode)]
+#[derive(Clone, Encode, Decode)]
 #[trait_decode(trait = GammaLoopContext)]
 pub struct LUCounterTermData {
-    pub left_thresholds: TiVec<LeftThresholdId, Esurface>,
-    pub right_thresholds: TiVec<RightThresholdId, Esurface>,
-    pub left_atoms: TiVec<LeftThresholdId, Atom>,
-    pub right_atoms: TiVec<RightThresholdId, Atom>,
-    pub iterated: IteratedCtCollection<Atom>,
+    pub left_thresholds: TiVec<LeftThresholdId, EsurfaceID>,
+    pub right_thresholds: TiVec<RightThresholdId, EsurfaceID>,
+    pub left_atoms: TiVec<LeftThresholdId, ParametricIntegrands>,
+    pub right_atoms: TiVec<RightThresholdId, ParametricIntegrands>,
+    pub iterated: IteratedCtCollection<ParametricIntegrands>,
 }
 
 define_index! {pub struct GlobalThresholdId;}
@@ -609,8 +604,8 @@ impl CrossSectionGraph {
 
         if settings.threshold_subtraction.enable_thresholds {
             debug!("building threshold counterterm");
-            self.build_threshold_counterterm(settings, vk)?;
             self.build_subspace_data()?;
+            self.build_threshold_counterterm(settings, vk)?;
         }
 
         Ok(())
@@ -1226,11 +1221,88 @@ impl CrossSectionGraph {
         };
 
         let cut_woods = CutWoods::new(cut_structure, &self.graph, &settings.uv.vakint);
-        cut_woods
-            .unfold(&self.graph)
-            .compute(&mut self.graph, vakint, &settings.uv)?;
+        let mut cut_forests = cut_woods.unfold(&self.graph);
 
-        // todo
+        cut_forests.compute(&mut self.graph, vakint, &settings.uv)?;
+
+        let mut threshold_counterterms = cut_forests
+            .orientation_parametric_exprs(&self.graph, settings.uv.add_sigma)?
+            .into_iter();
+
+        let lu_prefactor = self.lu_prefactor_helper_new();
+
+        let mut result = TiVec::<RaisedCutId, LUCounterTermData>::new();
+        for (raised_cut_id, _raised_cut_group) in self
+            .derived_data
+            .raised_data
+            .raised_cut_groups
+            .iter_enumerated()
+        {
+            let (left_subspace, right_subspace) = &self.derived_data.subspace_data[raised_cut_id];
+
+            let th_prefactor_left = self.th_prefactor_helper(
+                left_subspace.loopcount(),
+                false,
+                !settings.threshold_subtraction.disable_integrated_ct,
+            );
+
+            let th_prefactor_right = self.th_prefactor_helper(
+                right_subspace.loopcount(),
+                true,
+                !settings.threshold_subtraction.disable_integrated_ct,
+            );
+
+            let iterated_prefactor = &th_prefactor_left * &th_prefactor_right;
+
+            let mut left_atoms = TiVec::<LeftThresholdId, _>::new();
+            let mut right_atoms = TiVec::<RightThresholdId, _>::new();
+            let mut iterated_atoms = vec![];
+
+            for _ in 0..left_raised_cut_threshold_data[raised_cut_id].len() {
+                left_atoms.push(
+                    threshold_counterterms
+                        .next()
+                        .unwrap()
+                        .map(|x| x * &th_prefactor_left * &lu_prefactor),
+                );
+            }
+
+            for _ in 0..right_raised_cut_threshold_data[raised_cut_id].len() {
+                right_atoms.push(
+                    threshold_counterterms
+                        .next()
+                        .unwrap()
+                        .map(|x| x * &th_prefactor_right * &lu_prefactor),
+                );
+            }
+
+            for _ in 0..(left_raised_cut_threshold_data[raised_cut_id].len()
+                * right_raised_cut_threshold_data[raised_cut_id].len())
+            {
+                iterated_atoms.push(
+                    threshold_counterterms
+                        .next()
+                        .unwrap()
+                        .map(|x| x * &iterated_prefactor * &lu_prefactor),
+                );
+            }
+
+            let iterated_collection = IteratedCtCollection {
+                data: iterated_atoms,
+                num_left_thresholds: left_atoms.len(),
+            };
+
+            let counterterm_data = LUCounterTermData {
+                left_thresholds: left_raised_cut_threshold_data[raised_cut_id].clone(),
+                right_thresholds: right_raised_cut_threshold_data[raised_cut_id].clone(),
+                left_atoms: left_atoms,
+                right_atoms: right_atoms,
+                iterated: iterated_collection,
+            };
+            result.push(counterterm_data);
+        }
+
+        self.derived_data.threshold_counterterms = result;
 
         Ok(())
     }
@@ -1239,16 +1311,18 @@ impl CrossSectionGraph {
         let all_lmbs = self.derived_data.lmbs.as_ref().unwrap();
 
         let subspace_data = self
-            .cuts
+            .derived_data
+            .raised_data
+            .raised_cut_groups
             .iter()
-            .map(|cut| {
-                let (subspace_lmb_index, lmb) = all_lmbs
+            .map(|cut_group| {
+                let (subspace_lmb_index, _lmb) = all_lmbs
                     .iter_enumerated()
                     .find(|(_index, lmb)| {
                         let mut edges_in_cut = self
                             .graph
                             .underlying
-                            .iter_edges_of(&cut.cut)
+                            .iter_edges_of(&self.cuts[cut_group.cuts[0]].cut)
                             .map(|(_, e, _)| e)
                             .collect_vec();
 
@@ -1257,16 +1331,39 @@ impl CrossSectionGraph {
                     })
                     .unwrap();
 
-                println!("externals: {:?}", lmb.ext_edges);
+                let left_subgraphs = cut_group
+                    .cuts
+                    .iter()
+                    .map(|cut_id| self.cuts[*cut_id].left.clone())
+                    .sorted_by(|subgraph_a, subgraph_b| {
+                        let n_edges_a = subgraph_a.nedges(&self.graph);
+                        let n_edges_b = subgraph_b.nedges(&self.graph);
+                        n_edges_a.cmp(&n_edges_b)
+                    })
+                    .collect_vec();
+
+                let right_subgraphs = cut_group
+                    .cuts
+                    .iter()
+                    .map(|cut_id| self.cuts[*cut_id].right.clone())
+                    .sorted_by(|subgraph_a, subgraph_b| {
+                        let n_edges_a = subgraph_a.nedges(&self.graph);
+                        let n_edges_b = subgraph_b.nedges(&self.graph);
+                        n_edges_a.cmp(&n_edges_b)
+                    })
+                    .collect_vec();
+
+                let largest_left_subgraph = left_subgraphs.last().unwrap().clone();
+                let smallest_right_subgraph = right_subgraphs.first().unwrap().clone();
 
                 let left_subspace = SubspaceData::new_with_user_selected_lmb(
-                    cut.left.clone(),
+                    largest_left_subgraph,
                     subspace_lmb_index,
                     &self.graph,
                     all_lmbs,
                 )?;
                 let right_subspace = SubspaceData::new_with_user_selected_lmb(
-                    cut.right.clone(),
+                    smallest_right_subgraph,
                     subspace_lmb_index,
                     &self.graph,
                     all_lmbs,
@@ -1297,9 +1394,8 @@ pub struct CrossSectionDerivedData {
     pub global_cff_expression: Option<CFFExpression<OrientationID>>,
     pub lmbs: Option<TiVec<LmbIndex, LoopMomentumBasis>>,
     pub multi_channeling_setup: Option<LmbMultiChannelingSetup>,
-    pub tensor_network_cache: TiVec<CutId, (ParsingNet, ParsingNet)>,
-    pub threshold_counterterms: TiVec<CutId, LUCounterTermData>,
-    pub subspace_data: TiVec<CutId, (SubspaceData, SubspaceData)>,
+    pub threshold_counterterms: TiVec<RaisedCutId, LUCounterTermData>,
+    pub subspace_data: TiVec<RaisedCutId, (SubspaceData, SubspaceData)>,
     pub raised_data: RaisedCutData,
 }
 
@@ -1398,7 +1494,6 @@ impl CrossSectionDerivedData {
             cut_paramatric_integrand: TiVec::new(),
             lmbs: None,
             multi_channeling_setup: None,
-            tensor_network_cache: TiVec::new(),
             threshold_counterterms: TiVec::new(),
             subspace_data: TiVec::new(),
             raised_data: RaisedCutData::new(),
