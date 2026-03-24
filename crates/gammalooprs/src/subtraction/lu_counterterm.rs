@@ -18,9 +18,13 @@ use crate::{
         expression::{GraphOrientation, OrientationID},
     },
     graph::{Graph, LmbIndex, LoopMomentumBasis},
-    integrands::process::{
-        GenericEvaluator, GenericEvaluatorFloat, ParamBuilder, ThresholdParams,
-        evaluators::SingleOrAllOrientations, param_builder::LUParams,
+    integrands::{
+        evaluation::EvaluationMetaData,
+        process::{
+            GenericEvaluator, GenericEvaluatorFloat, ParamBuilder, ThresholdParams,
+            evaluators::{EvaluatorStack, SingleOrAllOrientations},
+            param_builder::LUParams,
+        },
     },
     momentum::{
         Rotation,
@@ -44,12 +48,9 @@ use crate::{
 #[derive(Clone, Encode, Decode)]
 #[trait_decode(trait = GammaLoopContext)]
 pub struct LUCounterTermEvaluators {
-    pub parametric_left_thresholds_evaluator: TiVec<LeftThresholdId, GenericEvaluator>,
-    pub parametric_right_threshold_evaluator: TiVec<RightThresholdId, GenericEvaluator>,
-    pub parametric_iterated_evaluator: IteratedCtCollection<GenericEvaluator>,
-    pub iterative_left_thresholds_evaluator: Option<TiVec<LeftThresholdId, GenericEvaluator>>,
-    pub iterative_right_threshold_evaluator: Option<TiVec<RightThresholdId, GenericEvaluator>>,
-    pub iterative_iterated_evaluator: Option<IteratedCtCollection<GenericEvaluator>>,
+    pub left_thresholds_evaluator: TiVec<LeftThresholdId, EvaluatorStack>,
+    pub right_thresholds_evaluator: TiVec<RightThresholdId, EvaluatorStack>,
+    pub iterated_evaluator: IteratedCtCollection<EvaluatorStack>,
 }
 
 impl LUCounterTermEvaluators {
@@ -59,147 +60,51 @@ impl LUCounterTermEvaluators {
         settings: &GlobalSettings,
         orientations: &TiVec<OrientationID, EdgeVec<Orientation>>,
     ) -> Self {
-        let parametric_left_thresholds_evaluator = counterterm_data
+        let left_thresholds_evaluator = counterterm_data
             .left_atoms
             .iter()
             .map(|atom| {
-                let evaluator_atom = atom.clone();
-
-                GenericEvaluator::new_from_builder(
-                    [evaluator_atom],
+                EvaluatorStack::new(
+                    &[atom.clone()],
                     param_builder,
+                    &orientations.raw,
                     None,
-                    OptimizationSettings::default(),
                     &settings.generation.evaluator,
                 )
                 .unwrap()
             })
             .collect();
 
-        let parametric_right_threshold_evaluator = counterterm_data
+        let right_thresholds_evaluator = counterterm_data
             .right_atoms
             .iter()
             .map(|atom| {
-                let evaluator_atom = atom.clone();
-
-                GenericEvaluator::new_from_builder(
-                    [evaluator_atom],
+                EvaluatorStack::new(
+                    &[atom.clone()],
                     param_builder,
+                    &orientations.raw,
                     None,
-                    OptimizationSettings::default(),
                     &settings.generation.evaluator,
                 )
                 .unwrap()
             })
             .collect();
 
-        let parametric_iterated_evaluator = counterterm_data.iterated.map_ref(|atom| {
-            let evaluator_atom = atom.clone();
-
-            GenericEvaluator::new_from_builder(
-                [evaluator_atom],
+        let iterated_evaluator = counterterm_data.iterated.map_ref(|atom| {
+            EvaluatorStack::new(
+                &[atom.clone()],
                 param_builder,
+                &orientations.raw,
                 None,
-                OptimizationSettings::default(),
                 &settings.generation.evaluator,
             )
             .unwrap()
         });
 
-        let iterative_left_thresholds_evaluator = if settings
-            .generation
-            .evaluator
-            .iterative_orientation_optimization
-        {
-            Some(
-                counterterm_data
-                    .left_atoms
-                    .iter()
-                    .map(|atom| {
-                        let evaluator_atoms = orientations.iter().map(|or| {
-                            let evaluator_atom = or.select(atom);
-
-                            evaluator_atom
-                        });
-
-                        GenericEvaluator::new_from_builder(
-                            evaluator_atoms,
-                            param_builder,
-                            None,
-                            OptimizationSettings::default(),
-                            &settings.generation.evaluator,
-                        )
-                        .unwrap()
-                    })
-                    .collect(),
-            )
-        } else {
-            None
-        };
-
-        let iterative_right_threshold_evaluator = if settings
-            .generation
-            .evaluator
-            .iterative_orientation_optimization
-        {
-            Some(
-                counterterm_data
-                    .right_atoms
-                    .iter()
-                    .map(|atom| {
-                        let evaluator_atoms = orientations.iter().map(|or| {
-                            let evaluator_atom = or.select(atom);
-
-                            evaluator_atom
-                        });
-
-                        GenericEvaluator::new_from_builder(
-                            evaluator_atoms,
-                            param_builder,
-                            None,
-                            OptimizationSettings::default(),
-                            &settings.generation.evaluator,
-                        )
-                        .unwrap()
-                    })
-                    .collect(),
-            )
-        } else {
-            None
-        };
-
-        let iterative_iterated_evaluator = if settings
-            .generation
-            .evaluator
-            .iterative_orientation_optimization
-        {
-            Some(counterterm_data.iterated.map_ref(|atom| {
-                let evaluator_atoms = orientations.iter().map(|or| {
-                    let evaluator_atom = or.select(atom);
-
-                    evaluator_atom
-                });
-
-                GenericEvaluator::new_from_builder(
-                    evaluator_atoms,
-                    param_builder,
-                    None,
-                    OptimizationSettings::default(),
-                    &settings.generation.evaluator,
-                )
-                .unwrap()
-            }))
-        } else {
-            None
-        };
-
         LUCounterTermEvaluators {
-            parametric_left_thresholds_evaluator,
-            parametric_right_threshold_evaluator,
-            parametric_iterated_evaluator,
-            iterative_left_thresholds_evaluator,
-            iterative_right_threshold_evaluator,
-            iterative_iterated_evaluator,
+            left_thresholds_evaluator,
+            right_thresholds_evaluator,
+            iterated_evaluator,
         }
     }
 }
@@ -232,6 +137,8 @@ impl LUCounterTerm {
         settings: &RuntimeSettings,
         param_builder: &mut ParamBuilder<f64>,
         orientations: SingleOrAllOrientations<'_, OrientationID>,
+        evaluation_meta_data: &mut EvaluationMetaData,
+        record_primary_timing: bool,
     ) -> Complex<F<T>> {
         let (left_subspace, right_subspace) = &self.subspaces[cut_id];
         let (sample_left_transformed, sample_right_transformed) = (
@@ -451,75 +358,40 @@ impl LUCounterTerm {
         for samples_group in left_overlap_samples.iter() {
             for sample in samples_group {
                 debug!("left threshold parameters");
+
                 let left_threshold_params: ThresholdParams<T> =
                     sample.extract_threshold_parameters(true);
                 let inverse_transformed_sample = sample.get_inverse_transformed_sample();
                 let left_threshold_id = LeftThresholdId::from(sample.get_esurface_id().0);
 
-                if let Some(iterative_evaluator) = self.evaluators[cut_id]
-                    .iterative_left_thresholds_evaluator
-                    .as_mut()
-                    .map(|evaluators| &mut evaluators[left_threshold_id])
-                {
-                    let params = T::get_parameters(
-                        param_builder,
-                        (false, false),
-                        graph,
-                        &inverse_transformed_sample,
-                        settings.kinematics.externals.get_helicities(),
-                        &settings.additional_params(),
-                        Some(&left_threshold_params),
-                        None,
-                        Some(lu_cut_params),
-                    );
+                let params = T::get_parameters(
+                    param_builder,
+                    (false, false),
+                    graph,
+                    &inverse_transformed_sample,
+                    settings.kinematics.externals.get_helicities(),
+                    &settings.additional_params(),
+                    Some(&left_threshold_params),
+                    None,
+                    Some(lu_cut_params),
+                );
 
-                    let iterative_result = <T as GenericEvaluatorFloat>::get_evaluator(
-                        iterative_evaluator,
-                    )(params.as_slice())
-                    .into_iter()
-                    .map(DualOrNot::unwrap_real)
-                    .collect_vec();
+                let mut result_of_this_ct = self.evaluators[cut_id].left_thresholds_evaluator
+                    [left_threshold_id]
+                    .evaluate(
+                        params,
+                        orientations,
+                        settings,
+                        evaluation_meta_data,
+                        record_primary_timing,
+                    )
+                    .unwrap()
+                    .pop()
+                    .unwrap()
+                    .unwrap_real();
 
-                    let mut result_of_this_ct = Complex::new_re(momentum_sample.zero());
-                    for (i, _e) in orientations.iter() {
-                        result_of_this_ct += &iterative_result[i.0];
-                    }
-                    result_of_this_ct *= &sample.value_of_multi_channeling_factor;
-                    left_evaluations += result_of_this_ct;
-                } else {
-                    let mut result_of_this_ct = Complex::new_re(momentum_sample.zero());
-
-                    let parametric_evaluator = &mut self.evaluators[cut_id]
-                        .parametric_left_thresholds_evaluator[left_threshold_id];
-
-                    for (_i, _orientation) in orientations.iter() {
-                        //param_builder.orientation_value(orientation, 1);
-
-                        let params = T::get_parameters(
-                            param_builder,
-                            (false, false),
-                            graph,
-                            &inverse_transformed_sample,
-                            settings.kinematics.externals.get_helicities(),
-                            &settings.additional_params(),
-                            Some(&left_threshold_params),
-                            None,
-                            Some(lu_cut_params),
-                        );
-
-                        let result = <T as GenericEvaluatorFloat>::get_evaluator(
-                            parametric_evaluator,
-                        )(params.as_slice())
-                        .into_iter()
-                        .map(DualOrNot::unwrap_real)
-                        .collect_vec();
-
-                        result_of_this_ct += &result[0];
-                    }
-
-                    result_of_this_ct *= &sample.value_of_multi_channeling_factor;
-                    left_evaluations += result_of_this_ct;
-                }
+                result_of_this_ct *= &sample.value_of_multi_channeling_factor;
+                left_evaluations += result_of_this_ct;
             }
         }
 
@@ -533,83 +405,40 @@ impl LUCounterTerm {
                 let inverse_transformed_sample = sample.get_inverse_transformed_sample();
                 let right_threshold_id = RightThresholdId::from(sample.get_esurface_id().0);
 
-                if let Some(iterative_evaluator) = self.evaluators[cut_id]
-                    .iterative_right_threshold_evaluator
-                    .as_mut()
-                    .map(|evaluators| &mut evaluators[right_threshold_id])
-                {
-                    let params = T::get_parameters(
-                        param_builder,
-                        (false, false),
-                        graph,
-                        &inverse_transformed_sample,
-                        settings.kinematics.externals.get_helicities(),
-                        &settings.additional_params(),
-                        None,
-                        Some(&right_threshold_params),
-                        Some(lu_cut_params),
-                    );
+                let params = T::get_parameters(
+                    param_builder,
+                    (false, false),
+                    graph,
+                    &inverse_transformed_sample,
+                    settings.kinematics.externals.get_helicities(),
+                    &settings.additional_params(),
+                    None,
+                    Some(&right_threshold_params),
+                    Some(lu_cut_params),
+                );
 
-                    let iterative_result = <T as GenericEvaluatorFloat>::get_evaluator(
-                        iterative_evaluator,
-                    )(params.as_slice())
-                    .into_iter()
-                    .map(DualOrNot::unwrap_real)
-                    .collect_vec();
+                let mut result_of_this_ct = self.evaluators[cut_id].right_thresholds_evaluator
+                    [right_threshold_id]
+                    .evaluate(
+                        params,
+                        orientations,
+                        settings,
+                        evaluation_meta_data,
+                        record_primary_timing,
+                    )
+                    .unwrap()
+                    .pop()
+                    .unwrap()
+                    .unwrap_real();
+                result_of_this_ct *= &sample.value_of_multi_channeling_factor;
 
-                    let mut result_of_this_ct = Complex::new_re(momentum_sample.zero());
-                    for (i, _e) in orientations.iter() {
-                        result_of_this_ct += &iterative_result[i.0];
-                    }
-                    result_of_this_ct *= &sample.value_of_multi_channeling_factor;
+                debug!(
+                    "evaluation of ct for esurface id {}: {:+16e}",
+                    sample.get_esurface_id().0,
+                    result_of_this_ct,
+                );
 
-                    debug!(
-                        "evaluation of ct for esurface id {}: {:+16e}",
-                        sample.get_esurface_id().0,
-                        result_of_this_ct,
-                    );
-                    right_evaluations += result_of_this_ct;
-                } else {
-                    let mut result_of_this_ct = Complex::new_re(momentum_sample.zero());
-
-                    let parametric_evaluator = &mut self.evaluators[cut_id]
-                        .parametric_right_threshold_evaluator[right_threshold_id];
-
-                    for (_i, _orientation) in orientations.iter() {
-                        // param_builder.orientation_value(orientation, 1);
-
-                        let params = T::get_parameters(
-                            param_builder,
-                            (false, false),
-                            graph,
-                            &inverse_transformed_sample,
-                            settings.kinematics.externals.get_helicities(),
-                            &settings.additional_params(),
-                            None,
-                            Some(&right_threshold_params),
-                            Some(lu_cut_params),
-                        );
-
-                        let result = <T as GenericEvaluatorFloat>::get_evaluator(
-                            parametric_evaluator,
-                        )(params.as_slice())
-                        .into_iter()
-                        .map(DualOrNot::unwrap_real)
-                        .collect_vec();
-
-                        result_of_this_ct += &result[0];
-                    }
-
-                    result_of_this_ct *= &sample.value_of_multi_channeling_factor;
-
-                    debug!(
-                        "evaluation of ct for esurface id {}: {:+16e}",
-                        sample.get_esurface_id().0,
-                        result_of_this_ct,
-                    );
-
-                    right_evaluations += result_of_this_ct;
-                }
+                right_evaluations += result_of_this_ct;
             }
         }
 
@@ -633,83 +462,39 @@ impl LUCounterTerm {
             let inverse_transformed_momentum_sample =
                 merge_and_inverse_transform(sample_left, sample_right);
 
-            if let Some(iterative_evaluator) = self.evaluators[cut_id]
-                .iterative_iterated_evaluator
-                .as_mut()
-                .map(|evaluators| &mut evaluators[iterated_index])
-            {
-                let params = T::get_parameters(
-                    param_builder,
-                    (false, false),
-                    graph,
-                    &inverse_transformed_momentum_sample,
-                    settings.kinematics.externals.get_helicities(),
-                    &settings.additional_params(),
-                    Some(&left_threshold_params),
-                    Some(&right_threshold_params),
-                    Some(lu_cut_params),
-                );
+            let params = T::get_parameters(
+                param_builder,
+                (false, false),
+                graph,
+                &inverse_transformed_momentum_sample,
+                settings.kinematics.externals.get_helicities(),
+                &settings.additional_params(),
+                Some(&left_threshold_params),
+                Some(&right_threshold_params),
+                Some(lu_cut_params),
+            );
 
-                let iterative_result = <T as GenericEvaluatorFloat>::get_evaluator(
-                    iterative_evaluator,
-                )(params.as_slice())
-                .into_iter()
-                .map(DualOrNot::unwrap_real)
-                .collect_vec();
+            let mut result_of_this_ct = self.evaluators[cut_id].iterated_evaluator[iterated_index]
+                .evaluate(
+                    params,
+                    orientations,
+                    settings,
+                    evaluation_meta_data,
+                    record_primary_timing,
+                )
+                .unwrap()
+                .pop()
+                .unwrap()
+                .unwrap_real();
 
-                let mut result_of_this_ct = Complex::new_re(momentum_sample.zero());
-
-                for (i, _e) in orientations.iter() {
-                    result_of_this_ct += &iterative_result[i.0];
-                }
-                result_of_this_ct *= multi_channeling_factor;
-                debug!(
-                    "evaluation of ct for esurfaces {}, {}: {:+16e}",
-                    sample_left.get_esurface_id().0,
-                    sample_right.get_esurface_id().0,
-                    result_of_this_ct,
-                );
-                cartesian_product_result += result_of_this_ct;
-            } else {
-                let mut result_of_this_ct = Complex::new_re(momentum_sample.zero());
-
-                let parametric_evaluator =
-                    &mut self.evaluators[cut_id].parametric_iterated_evaluator[iterated_index];
-
-                for (_i, _orientation) in orientations.iter() {
-                    //  param_builder.orientation_value(orientation, 1);
-
-                    let params = T::get_parameters(
-                        param_builder,
-                        (false, false),
-                        graph,
-                        &inverse_transformed_momentum_sample,
-                        settings.kinematics.externals.get_helicities(),
-                        &settings.additional_params(),
-                        Some(&left_threshold_params),
-                        Some(&right_threshold_params),
-                        Some(lu_cut_params),
-                    );
-
-                    let result = <T as GenericEvaluatorFloat>::get_evaluator(parametric_evaluator)(
-                        params.as_slice(),
-                    )
-                    .into_iter()
-                    .map(DualOrNot::unwrap_real)
-                    .collect_vec();
-
-                    result_of_this_ct += &result[0];
-                }
-
-                result_of_this_ct *= multi_channeling_factor;
-                debug!(
-                    "evaluation of ct for esurfaces {}, {}: {:+16e}",
-                    sample_left.get_esurface_id().0,
-                    sample_right.get_esurface_id().0,
-                    result_of_this_ct,
-                );
-                cartesian_product_result += result_of_this_ct;
-            }
+            result_of_this_ct *= multi_channeling_factor;
+            debug!(
+                "evaluation of ct for esurfaces {}, {}: {:+16e}",
+                sample_left.get_esurface_id().0,
+                sample_right.get_esurface_id().0,
+                result_of_this_ct,
+            );
+            cartesian_product_result += result_of_this_ct;
         }
 
         debug!("left ct evaluation: {:+16e}", left_evaluations);
