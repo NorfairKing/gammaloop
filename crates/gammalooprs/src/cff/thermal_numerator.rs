@@ -1,4 +1,4 @@
-use crate::utils::{ose_atom_from_index, thermal_distribution_atom_from_ose_atom};
+use crate::utils::thermal_distribution_atom_from_index;
 use bincode_trait_derive::{Decode, Encode};
 use derive_more::{From, Into};
 use linnet::half_edge::involution::EdgeIndex;
@@ -19,17 +19,14 @@ pub struct ThermalNumerator {
 }
 
 impl ThermalNumerator {
-    pub(crate) fn to_atom(&self, cut_edges: &[EdgeIndex]) -> Atom {
-        let energy_atom = |index: EdgeIndex| ose_atom_from_index(index);
-
+    pub(crate) fn to_atom(&self, _cut_edges: &[EdgeIndex]) -> Atom {
         let product = |positive_sign_is_negative: bool, negative_sign_is_negative: bool| {
             let positive_part = self
                 .positive_energies
                 .iter()
                 .fold(Atom::num(1), |acc, &edge| {
-                    let ose_atom = energy_atom(edge);
-                    acc * thermal_distribution_atom_from_ose_atom(
-                        ose_atom,
+                    acc * thermal_distribution_atom_from_index(
+                        edge,
                         positive_sign_is_negative,
                     )
                 });
@@ -38,9 +35,8 @@ impl ThermalNumerator {
                 .negative_energies
                 .iter()
                 .fold(Atom::num(1), |acc, &edge| {
-                    let ose_atom = energy_atom(edge);
-                    acc * thermal_distribution_atom_from_ose_atom(
-                        ose_atom,
+                    acc * thermal_distribution_atom_from_index(
+                        edge,
                         negative_sign_is_negative,
                     )
                 });

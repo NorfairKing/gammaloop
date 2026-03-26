@@ -157,6 +157,8 @@ pub struct GeneralSettings {
     pub m_uv: f64,
     #[serde(skip_serializing_if = "is_float::<1000_000>")]
     pub mu_r_sq: f64,
+    #[serde(skip_serializing_if = "is_float::<1>")]
+    pub inverse_temperature: f64,
     #[serde(skip_serializing_if = "IsDefault::is_default")]
     pub additional_param_values: Vec<f64>,
     #[serde(skip_serializing_if = "is_false")]
@@ -180,6 +182,7 @@ impl Default for GeneralSettings {
             orientation_pat: OrientationPattern::default(),
             m_uv: 1000.0,
             mu_r_sq: 1000000.0,
+            inverse_temperature: 1.0,
             additional_param_values: vec![],
             use_picobarns: false,
             disable_flux_factor: false,

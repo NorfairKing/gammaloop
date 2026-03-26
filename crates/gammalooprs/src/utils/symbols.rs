@@ -162,6 +162,7 @@ pub struct GammaloopSymbols {
     pub sign: Symbol,
     pub theta: Symbol,
     pub broadcasting_sqrt: Symbol,
+    pub tanh: Symbol,
     ///for selecting orientations at generation
     pub selected: Symbol,
 
@@ -193,6 +194,7 @@ pub struct GammaloopSymbols {
     pub uv_damp_plus_right: Symbol,
     pub uv_damp_minus_right: Symbol,
     pub thermal_distribution: Symbol,
+    pub inverse_temperature: Symbol,
 }
 
 impl GammaloopSymbols {
@@ -660,6 +662,7 @@ pub static GS: LazyLock<GammaloopSymbols> = LazyLock::new(|| GammaloopSymbols {
             **out = Atom::num(1) / (Atom::num(2) * a);
         }
     ),
+    tanh: symbol!("tanh"),
     expansion: symbol!("expansion"),
     rescale_star: symbol!("t⃰"),
     hfunction_lu_cut: symbol!("h_lu_cut"),
@@ -846,6 +849,7 @@ pub static GS: LazyLock<GammaloopSymbols> = LazyLock::new(|| GammaloopSymbols {
     uv_damp_plus_right: symbol!("damp_plus_right"),
     uv_damp_minus_right: symbol!("damp_minus_right"),
     thermal_distribution: symbol!("N"),
+    inverse_temperature: symbol!("β"),
 });
 
 impl GammaloopSymbols {
@@ -966,6 +970,11 @@ impl GammaloopSymbols {
                 }
             }
         })
+    }
+
+    pub(crate) fn tanh<'a>(&self, arg: impl Into<AtomOrView<'a>>) -> Atom {
+        let a = arg.into();
+        function!(self.tanh, a.as_view())
     }
 
     pub(crate) fn emr_mom<'a>(&self, e: EdgeIndex, arg: impl Into<AtomOrView<'a>>) -> Atom {

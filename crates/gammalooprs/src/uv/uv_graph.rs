@@ -287,4 +287,5 @@ impl UltravioletGraph for Graph {
 
 pub trait UVE {
     fn mass_atom(&self) -> Atom;
+    fn is_fermion(&self) -> bool;
 }

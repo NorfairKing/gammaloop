@@ -629,7 +629,7 @@ impl Forests {
     ) -> Result<()> {
         let local_orchestrator = Local3DApproximation {};
         for (cut_compatible_forest_subset, c) in &self.cuts {
-            let mut integrands = Some(Local3DApproximation::root(graph, c)?);
+            let mut integrands = Some(Local3DApproximation::root(graph, c, settings.medium.mode)?);
 
             let uvctx = UVCtx {
                 graph: &*graph,

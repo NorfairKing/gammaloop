@@ -275,6 +275,14 @@ impl UVE for Edge {
             }
         }
     }
+
+    fn is_fermion(&self) -> bool {
+        match &self.particle {
+            PossibleParticle::JustMass { .. } => false,
+            PossibleParticle::Particle(p) => p.is_fermion(),
+            PossibleParticle::MassOverriddenParticle { particle, .. } => particle.is_fermion(),
+        }
+    }
 }
 
 impl Edge {
@@ -423,6 +431,14 @@ impl UVE for ParseEdge {
             PossibleParticle::JustMass { expr, .. } => expr.clone(),
             PossibleParticle::Particle(p) => p.mass.0.into(),
             PossibleParticle::MassOverriddenParticle { mass, .. } => mass.clone(),
+        }
+    }
+
+    fn is_fermion(&self) -> bool {
+        match &self.particle {
+            PossibleParticle::JustMass { .. } => false,
+            PossibleParticle::Particle(p) => p.is_fermion(),
+            PossibleParticle::MassOverriddenParticle { particle, .. } => particle.is_fermion(),
         }
     }
 }

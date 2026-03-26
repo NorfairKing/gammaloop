@@ -633,6 +633,7 @@ impl AmplitudeGraph {
             }
             param_builder.m_uv_value(Complex::new_re(F(run_time_settings.general.m_uv)));
             param_builder.mu_r_sq_value(Complex::new_re(F(run_time_settings.general.mu_r_sq)));
+            param_builder.inverse_temperature_value(Complex::new_re(F(run_time_settings.general.inverse_temperature)));
 
             // println!("\nParamBuilder parameters:\n{}", param_builder);
 

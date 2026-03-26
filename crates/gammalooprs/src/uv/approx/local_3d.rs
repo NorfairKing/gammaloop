@@ -13,6 +13,7 @@ use crate::{
         approx::{ApproximationKernel, UVCtx},
         uv_graph::UVE,
     },
+    settings::global::MediumMode,
 };
 use color_eyre::Result;
 
@@ -23,6 +24,7 @@ impl Local3DApproximation {
         graph: &mut Graph,
         to_contract: &SuBitGraph,
         cuts: &CutSet,
+        medium_mode: MediumMode,
     ) -> Result<Vec<Atom>> {
         let cff = graph
             .cff(
@@ -30,6 +32,7 @@ impl Local3DApproximation {
                     .union(&graph.tree_edges)
                     .subtract(&graph.initial_state_cut),
                 cuts,
+                medium_mode,
             )?
             .expression_with_selectors();
 
@@ -40,8 +43,8 @@ impl Local3DApproximation {
         Ok(cff.iter().map(|a| a * &fourddenoms).collect())
     }
 
-    pub(crate) fn root(graph: &mut Graph, cuts: &CutSet) -> Result<Vec<Atom>> {
-        Self::dependent(graph, &graph.empty_subgraph::<SuBitGraph>(), cuts)
+    pub(crate) fn root(graph: &mut Graph, cuts: &CutSet, medium_mode: MediumMode) -> Result<Vec<Atom>> {
+        Self::dependent(graph, &graph.empty_subgraph::<SuBitGraph>(), cuts, medium_mode)
     }
 }
 
