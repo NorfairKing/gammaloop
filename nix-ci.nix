@@ -33,11 +33,12 @@ in {
     "packages.${system}.gammaloop-llvm-coverage" = ["packages.${system}.gammaloop"];
     "packages.${system}.nix-ci-check-gammaloop-doctest" = ["packages.${system}.cargoArtifacts"];
     "packages.${system}.nix-ci-check-gammaloop-nextest" = ["packages.${system}.cargoArtifacts"];
-    "packages.${system}.nix-ci-check-gammaloop-nextest-core" = ["packages.${system}.cargoArtifacts"];
-    "packages.${system}.nix-ci-check-gammaloop-nextest-integration" = ["packages.${system}.cargoArtifacts"];
-    "packages.${system}.nix-ci-check-gammaloop-nextest-linnet" = ["packages.${system}.cargoArtifacts"];
-    "packages.${system}.nix-ci-check-gammaloop-nextest-spenso" = ["packages.${system}.cargoArtifacts"];
-    "packages.${system}.nix-ci-check-gammaloop-nextest-vakint" = ["packages.${system}.cargoArtifacts"];
+    "packages.${system}.nextestArchive" = ["packages.${system}.cargoArtifacts"];
+    "packages.${system}.nix-ci-check-gammaloop-nextest-core" = ["packages.${system}.nextestArchive"];
+    "packages.${system}.nix-ci-check-gammaloop-nextest-integration" = ["packages.${system}.nextestArchive"];
+    "packages.${system}.nix-ci-check-gammaloop-nextest-linnet" = ["packages.${system}.nextestArchive"];
+    "packages.${system}.nix-ci-check-gammaloop-nextest-spenso" = ["packages.${system}.nextestArchive"];
+    "packages.${system}.nix-ci-check-gammaloop-nextest-vakint" = ["packages.${system}.nextestArchive"];
   };
   test = {
     gammaloop-doctest = {

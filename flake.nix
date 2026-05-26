@@ -538,22 +538,59 @@
       nextestPackageArgs = packages:
         lib.concatMapStringsSep " " (package: "-p ${package}") packages;
 
+      # Compile every workspace test binary once and tar them into a nextest archive.
+      # Each per-group run below consumes this archive instead of recompiling.
+      nextestArchive = craneLib.mkCargoDerivation (ciArgs
+        // {
+          inherit cargoArtifacts;
+          src = workspaceTestSrc;
+          pname = "gammaloop-nextest-archive";
+          nativeBuildInputs = (ciArgs.nativeBuildInputs or []) ++ [pkgs.form pkgs.cargo-nextest];
+          doCheck = false;
+          doInstallCargoArtifacts = false;
+          # `cargo nextest archive` accepts the same selector flags as `run`; pass
+          # --workspace so every package's tests end up in the archive.
+          buildPhaseCargoCommand = ''
+            ${licensePreCheck}
+            mkdir -p "$out"
+            cargo nextest archive \
+              ''${CARGO_PROFILE:+--cargo-profile $CARGO_PROFILE} \
+              --locked --workspace \
+              --archive-format tar-zst \
+              --archive-file "$out/archive.tar.zst"
+          '';
+          SYMBOLICA_LICENSE = builtins.getEnv "SYMBOLICA_LICENSE";
+        });
+
       nextestCheckFor = target:
-        craneLib.cargoNextest (ciArgs
+        craneLib.mkCargoDerivation (ciArgs
           // {
-            inherit cargoArtifacts;
+            cargoArtifacts = null;
+            cargoVendorDir = null;
             src = workspaceTestSrc;
             pname = "gammaloop-nextest-${target.name}";
-            nativeBuildInputs = (ciArgs.nativeBuildInputs or []) ++ [pkgs.form];
-            cargoExtraArgs = "--locked ${nextestPackageArgs target.packages}";
-            cargoNextestExtraArgs = nextestBaseExtraArgs;
+            nativeBuildInputs = (ciArgs.nativeBuildInputs or []) ++ [pkgs.form pkgs.cargo-nextest];
+            doCheck = true;
+            doInstallCargoArtifacts = false;
+            RUST_BACKTRACE = "1";
+            RUST_LIB_BACKTRACE = "1";
+            # The archive provides compiled test binaries; nothing to do at build time.
+            # buildPhaseCargoCommand is required by mkCargoDerivation but unused
+            # because we override buildPhase wholesale.
+            buildPhaseCargoCommand = "";
+            buildPhase = ''
+              runHook preBuild
+              cargo nextest --version
+              runHook postBuild
+            '';
             checkPhase = ''
               runHook preCheck
 
               set +e
               cargo nextest run \
-                ''${CARGO_PROFILE:+--cargo-profile $CARGO_PROFILE} \
-                --locked ${nextestPackageArgs target.packages} ${nextestBaseExtraArgs}
+                --archive-file ${nextestArchive}/archive.tar.zst \
+                --workspace-remap . \
+                ${nextestPackageArgs target.packages} ${nextestBaseExtraArgs}
               nextest_status=$?
               set -e
 
@@ -562,11 +599,6 @@
               runHook postCheck
               exit "$nextest_status"
             '';
-            doInstallCargoArtifacts = false;
-            RUST_BACKTRACE = "1";
-            RUST_LIB_BACKTRACE = "1";
-          }
-          // {
             preCheck = ''
               ${licensePreCheck}
               export INSTA_WORKSPACE_ROOT="$PWD"
@@ -680,7 +712,7 @@
           default = gammaloop-cli;
           gammaloop = gammaloop-cli;
           inherit linnest-wasm linnestWasmCargoArtifacts;
-          inherit cargoArtifacts;
+          inherit cargoArtifacts nextestArchive;
           "nix-ci-passed" = nixCiPassed;
         }
         // impureCheckRunnerPackages
